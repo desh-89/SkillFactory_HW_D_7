@@ -4,10 +4,12 @@ from django.core.paginator import Paginator
 from django.contrib.auth.mixins import LoginRequiredMixin, PermissionRequiredMixin
 from django.core.mail import send_mail
 from django.contrib.auth.decorators import login_required
+from django.template.loader import render_to_string
 from .models import Author, Category, PostCategory
 from .models import Post as PostModel
 from .filters import NewsFilter
 from .forms import PostForm
+from .tasks import send_new_mail
 
 
 class PostList(ListView):
@@ -107,3 +109,19 @@ def unsubscribe_category(request, pk):
     category.subscribers.remove(user)
 
     return redirect('/news')
+
+
+def send_mail(instance):
+    sub_text = instance.main_part
+
+    for category in instance.postCategories.all():
+        for subscriber in category.subscribers.all():
+            html_content = render_to_string(
+                'mail.html', {'post': instance, 'text': sub_text[:50], 'category': category.article_text})
+
+            username = subscriber.username
+            email = subscriber.email
+
+            send_new_mail.delay(username, email, html_content)
+
+        return redirect('/news/')
